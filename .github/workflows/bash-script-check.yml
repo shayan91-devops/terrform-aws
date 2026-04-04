@@ -1,0 +1,74 @@
+name: Bash script check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "script/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - "script/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check-bash:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install ShellCheck
+        run: sudo apt-get update -qq && sudo apt-get install -y shellcheck
+
+      - name: Find bash scripts
+        id: scripts
+        run: |
+          mapfile -t scripts < <(find script -type f -name '*.sh' 2>/dev/null | sort -u)
+          if [ "${#scripts[@]}" -eq 0 ] || [ -z "${scripts[0]}" ]; then
+            echo "No .sh files under script/. Nothing to check."
+            echo "has_scripts=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "has_scripts=true" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "${scripts[@]}"
+
+      - name: Syntax check (bash -n)
+        if: steps.scripts.outputs.has_scripts == 'true'
+        run: |
+          set -euo pipefail
+          failed=0
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            echo "::group::bash -n — $f"
+            if bash -n "$f"; then
+              echo "OK: no syntax errors."
+            else
+              echo "::error title=bash syntax::$f: fix the reported line (unclosed quote, bad 'if', etc.)"
+              failed=1
+            fi
+            echo "::endgroup::"
+          done < <(find script -type f -name '*.sh' | sort -u)
+          exit "$failed"
+
+      - name: ShellCheck (lint + fix hints)
+        if: steps.scripts.outputs.has_scripts == 'true'
+        run: |
+          set -euo pipefail
+          failed=0
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            echo "::group::shellcheck — $f"
+            if shellcheck -x -S warning "$f"; then
+              echo "OK: ShellCheck passed (warnings and above)."
+            else
+              echo "::notice::ShellCheck prints SC codes and how to fix each issue. See https://www.shellcheck.net/wiki/"
+              echo "::error title=ShellCheck::$f: see job log above for SCxxxx codes and remediation text"
+              failed=1
+            fi
+            echo "::endgroup::"
+          done < <(find script -type f -name '*.sh' | sort -u)
+          exit "$failed"

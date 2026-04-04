@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORK_DIR="${SCRIPT_DIR}/.tmp-files"
 
 mkdir -p "${WORK_DIR}"
-cd "${WORK_DIR}"
+cd "${WORK_DIR}" || exit 1
 
 files=(adeel owais "adeel 2" shayan)
 
